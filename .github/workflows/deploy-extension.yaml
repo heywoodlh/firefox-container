@@ -1,0 +1,36 @@
+name: build and deploy firefox extension to addons.mozilla.org
+
+on:
+  workflow_dispatch:
+
+jobs:
+  render-manifests:
+    name: Check and apply all deployments
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: ./firefox-container
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+
+      - name: Build the package
+        run: |
+          cd firefox-container
+          nix run .#package
+
+      - uses: wdzeng/firefox-addon@v1
+        with:
+          addon-guid: heywoodlh-container
+          xpi-path: firefox-container/web-ext-artifacts/heywoodlh_container-*.zip
+          self-hosted: false
+          jwt-issuer: ${{ secrets.FIREFOX_JWT_ISSUER }}
+          jwt-secret: ${{ secrets.FIREFOX_JWT_SECRET }}
+

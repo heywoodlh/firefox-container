@@ -1,6 +1,6 @@
 // Param values from https://developer.mozilla.org/Add-ons/WebExtensions/API/contextualIdentities/create
 const GOOGLE_CONTAINER_NAME = "Google";
-const GOOGLE_CONTAINER_COLOR = "red";
+const GOOGLE_CONTAINER_COLOR = "blue";
 const GOOGLE_CONTAINER_ICON = "briefcase";
 
 let GOOGLE_DOMAINS = [
@@ -43,23 +43,19 @@ GOOGLE_DOMAINS = GOOGLE_DOMAINS.concat(GOOGLE_INTL_DOMAINS)
   .concat(GOOGLE_SERVICES).concat(YOUTUBE_DOMAINS).concat(BLOGSPOT_DOMAINS).concat(ALPHABET_DOMAINS)
   .concat(DEVELOPER_DOMAINS).concat(AD_DOMAINS);
 
-const MAC_ADDON_ID = "@testpilot-containers";
-
-let macAddonEnabled = false;
+let googleMacAddonEnabled = false;
 let googleCookieStoreId = null;
-let extensionSettings = {};
 
-const canceledRequests = {};
 const tabsWaitingToLoad = {};
 const googleHostREs = [];
 const youtubeHostREs = [];
 const whitelistedHostREs = [];
 const allowlistedHostREs = [];
 
-async function isMACAddonEnabled () {
+async function isGoogleMACAddonEnabled () {
   try {
-    const macAddonInfo = await browser.management.get(MAC_ADDON_ID);
-    if (macAddonInfo.enabled) {
+    const googleMacAddonInfo = await browser.management.get(MAC_ADDON_ID);
+    if (googleMacAddonInfo.enabled) {
       return true;
     }
   } catch (e) {
@@ -68,7 +64,7 @@ async function isMACAddonEnabled () {
   return false;
 }
 
-async function setupMACAddonManagementListeners () {
+async function googleSetupMACAddonManagementListeners () {
   browser.management.onInstalled.addListener(info => {
     if (info.id === MAC_ADDON_ID) {
       macAddonEnabled = true;
@@ -89,65 +85,6 @@ async function setupMACAddonManagementListeners () {
       macAddonEnabled = false;
     }
   });
-}
-
-async function getMACAssignment (url) {
-  if (!macAddonEnabled) {
-    return false;
-  }
-
-  try {
-    const assignment = await browser.runtime.sendMessage(MAC_ADDON_ID, {
-      method: "getAssignment",
-      url
-    });
-    return assignment;
-  } catch (e) {
-    return false;
-  }
-}
-
-function cancelRequest (tab, options) {
-  // we decided to cancel the request at this point, register canceled request
-  canceledRequests[tab.id] = {
-    requestIds: {
-      [options.requestId]: true
-    },
-    urls: {
-      [options.url]: true
-    }
-  };
-
-  // since webRequest onCompleted and onErrorOccurred are not 100% reliable
-  // we register a timer here to cleanup canceled requests, just to make sure we don't
-  // end up in a situation where certain urls in a tab.id stay canceled
-  setTimeout(() => {
-    if (canceledRequests[tab.id]) {
-      delete canceledRequests[tab.id];
-    }
-  }, 2000);
-}
-
-function shouldCancelEarly (tab, options) {
-  // we decided to cancel the request at this point
-  if (!canceledRequests[tab.id]) {
-    cancelRequest(tab, options);
-  } else {
-    let cancelEarly = false;
-    if (canceledRequests[tab.id].requestIds[options.requestId] ||
-        canceledRequests[tab.id].urls[options.url]) {
-      // same requestId or url from the same tab
-      // this is a redirect that we have to cancel early to prevent opening two tabs
-      cancelEarly = true;
-    }
-    // register this requestId and url as canceled too
-    canceledRequests[tab.id].requestIds[options.requestId] = true;
-    canceledRequests[tab.id].urls[options.url] = true;
-    if (cancelEarly) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function generateGoogleHostREs () {
@@ -181,16 +118,6 @@ function generateAllowlistedHostREs () {
   }
 }
 
-async function loadExtensionSettings () {
-  extensionSettings = await browser.storage.sync.get();
-  if (extensionSettings.whitelist === undefined){
- 	extensionSettings.whitelist = "";
-  }
-  if (extensionSettings.allowlist === undefined){
- 	extensionSettings.allowlist = "";
-  }
-}
-
 async function clearGoogleCookies () {
   // Clear all google cookies
   const containers = await browser.contextualIdentities.query({});
@@ -199,9 +126,9 @@ async function clearGoogleCookies () {
   });
 
   let macAssignments = [];
-  if (macAddonEnabled) {
+  if (googleMacAddonEnabled) {
     const promises = GOOGLE_DOMAINS.map(async googleDomain => {
-      const assigned = await getMACAssignment(`https://${googleDomain}/`);
+      const assigned = await Globals.getMACAssignment(`https://${googleDomain}/`);
       return assigned ? googleDomain : null;
     });
     macAssignments = await Promise.all(promises);
@@ -211,7 +138,7 @@ async function clearGoogleCookies () {
     const googleCookieUrl = `https://${googleDomain}/`;
 
     // dont clear cookies for googleDomain if mac assigned (with or without www.)
-    if (macAddonEnabled &&
+    if (googleMacAddonEnabled &&
         (macAssignments.includes(googleDomain) ||
          macAssignments.includes(`www.${googleDomain}`))) {
       return;
@@ -240,11 +167,16 @@ async function clearGoogleCookies () {
   });
 }
 
-async function setupContainer () {
+async function setupGoogleContainer () {
+  let currentSettings = await browser.storage.sync.get();
   // Use existing Google container, or create one
   const contexts = await browser.contextualIdentities.query({name: GOOGLE_CONTAINER_NAME});
   if (contexts.length > 0) {
     googleCookieStoreId = contexts[0].cookieStoreId;
+    if (currentSettings.disable_google) {
+      // Remove the container
+      const context = await browser.contextualIdentities.remove(googleCookieStoreId);
+    }
   } else {
     const context = await browser.contextualIdentities.create({
       name: GOOGLE_CONTAINER_NAME,
@@ -252,6 +184,10 @@ async function setupContainer () {
       icon: GOOGLE_CONTAINER_ICON
     });
     googleCookieStoreId = context.cookieStoreId;
+    if (currentSettings.disable_google) {
+      // Remove the container
+      const context = await browser.contextualIdentities.remove(googleCookieStoreId);
+    }
   }
 }
 
@@ -396,7 +332,7 @@ function shouldContainInto (url, tab) {
 
 async function maybeReopenAlreadyOpenTabs () {
   const maybeReopenTab = async tab => {
-    const macAssigned = await getMACAssignment(tab.url);
+    const macAssigned = await Globals.getMACAssignment(tab.url);
     if (macAssigned) {
       // We don't reopen MAC assigned urls
       return;
@@ -470,7 +406,7 @@ async function containGoogle (options) {
 
   // We have to check with every request if the requested URL is assigned with MAC
   // because the user can assign URLs at any given time (needs MAC Events)
-  const macAssigned = await getMACAssignment(options.url);
+  const macAssigned = await Globals.getMACAssignment(options.url);
   if (macAssigned) {
     // This URL is assigned with MAC, so we don't handle this request
     return;
@@ -488,7 +424,7 @@ async function containGoogle (options) {
     // Request doesn't need to be contained
     return;
   }
-  if (shouldCancelEarly(tab, options)) {
+  if (Globals.shouldCancelEarly(tab, options)) {
     // We need to cancel early to prevent multiple reopenings
     return {cancel: true};
   }
@@ -502,11 +438,11 @@ async function containGoogle (options) {
 }
 
 (async function init() {
-  await setupMACAddonManagementListeners();
-  macAddonEnabled = await isMACAddonEnabled();
+  await googleSetupMACAddonManagementListeners();
+  googleMacAddonEnabled = await isGoogleMACAddonEnabled();
 
   try {
-    await setupContainer();
+    await setupGoogleContainer();
   } catch (error) {
     // TODO: Needs backup strategy
     // See https://github.com/mozilla/contain-facebook/issues/23
@@ -515,24 +451,30 @@ async function containGoogle (options) {
     console.log(error);
     return;
   }
-  loadExtensionSettings();
   clearGoogleCookies();
   generateGoogleHostREs();
+  Globals.loadExtensionSettings();
 
-  // Clean up canceled requests
-  browser.webRequest.onCompleted.addListener((options) => {
-    if (canceledRequests[options.tabId]) {
-      delete canceledRequests[options.tabId];
-    }
-  },{urls: ["<all_urls>"], types: ["main_frame"]});
-  browser.webRequest.onErrorOccurred.addListener((options) => {
-    if (canceledRequests[options.tabId]) {
-      delete canceledRequests[options.tabId];
-    }
-  },{urls: ["<all_urls>"], types: ["main_frame"]});
+  // Do nothing if the user has disabled the container
+  let currentSettings = await browser.storage.sync.get();
+  if (currentSettings.disable_google) {
+    return
+  } else {
+    // Clean up canceled requests
+    browser.webRequest.onCompleted.addListener((options) => {
+      if (canceledRequests[options.tabId]) {
+        delete canceledRequests[options.tabId];
+      }
+    },{urls: ["<all_urls>"], types: ["main_frame"]});
+    browser.webRequest.onErrorOccurred.addListener((options) => {
+      if (canceledRequests[options.tabId]) {
+        delete canceledRequests[options.tabId];
+      }
+    },{urls: ["<all_urls>"], types: ["main_frame"]});
 
-  // Add the request listener
-  browser.webRequest.onBeforeRequest.addListener(containGoogle, {urls: ["<all_urls>"], types: ["main_frame"]}, ["blocking"]);
+    // Add the request listener
+    browser.webRequest.onBeforeRequest.addListener(containGoogle, {urls: ["<all_urls>"], types: ["main_frame"]}, ["blocking"]);
 
-  maybeReopenAlreadyOpenTabs();
+    maybeReopenAlreadyOpenTabs();
+  }
 })();

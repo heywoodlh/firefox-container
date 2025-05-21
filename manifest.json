@@ -1,23 +1,23 @@
 {
     "manifest_version": 2,
-    "name": "Google Container",
-    "version": "1.5.4",
+    "name": "Heywoodlh Container",
+    "version": "1.6.0",
 
-    "description": "Google Container isolates your Google activity from the rest of your web activity in order to prevent Google from tracking you outside of the Google website via third party cookies.",
+    "description": "Fork of Google container with support for multiple services.",
 
     "icons": {
         "48": "icon.png",
         "96": "icon@2x.png"
     },
 
-    "applications": {
+    "browser_specific_settings": {
       "gecko": {
-        "id": "@contain-google",
-        "strict_min_version": "57.0"
+        "id": "@heywoodlh-container",
+        "strict_min_version": "58.0"
       }
     },
 
-    "homepage_url": "https://github.com/containers-everywhere/contain-google",
+    "homepage_url": "https://github.com/heywoodlh/firefox-container",
 
     "permissions": [
         "<all_urls>",
@@ -31,9 +31,16 @@
     ],
 
     "background": {
-        "scripts": ["background.js"]
+        "scripts": [
+            "main.js",
+            "services/amazon.js",
+            "services/google.js",
+            "services/plex.js",
+            "services/reddit.js",
+            "services/spotify.js"
+        ]
     },
-    
+
     "options_ui": {
         "page": "options.html",
         "browser_style": true
