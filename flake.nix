@@ -21,6 +21,7 @@
         '';
       in
       {
+        packages.package = package;
         devShell = pkgs.mkShell {
           name = "default";
           buildInputs = with pkgs; [
