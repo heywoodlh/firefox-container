@@ -5,7 +5,7 @@ on:
 
 jobs:
   render-manifests:
-    name: Check and apply all deployments
+    name: Build extension and publish
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,6 +26,17 @@ jobs:
           cd firefox-container
           nix run .#package
 
+      - run:
+          echo version=$(jq -r .version firefox-container/manifest.json) >> $GITHUB_ENV
+
+      - name: Create release
+        uses: ncipollo/release-action@v1.16.0
+        with:
+          artifacts: './firefox-container/web-ext-artifacts/heywoodlh_container-*.zip'
+          tag: "${{ env.version }}"
+          skipIfReleaseExists: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: wdzeng/firefox-addon@v1
         with:
           addon-guid: heywoodlh-container
@@ -33,4 +44,5 @@ jobs:
           self-hosted: false
           jwt-issuer: ${{ secrets.FIREFOX_JWT_ISSUER }}
           jwt-secret: ${{ secrets.FIREFOX_JWT_SECRET }}
+          license: "MPL-2.0"
 
