@@ -6,8 +6,20 @@ A Firefox Extension for isolating multiple services in one extension. The follow
 - [Plex](./services/plex.js)
 - [Reddit](./services/reddit.js)
 - [Spotify](./services/spotify.js)
+- [Discord](./services/discord.js)
+- [OpenAI](./services/openai.js)
 
 Specifically, my priority are services I use that are often allergic to user privacy.
+
+## Dev
+
+Build the extension with:
+
+```
+nix run .#package
+```
+
+Then add the local extension file in <about:config> > Gear Icon > Debug Add-ons > Load Temporary Add-on
 
 ## Background
 

@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "Heywoodlh Container",
-    "version": "1.6.0",
+    "version": "1.6.1",
 
     "description": "Fork of Google container with support for multiple services.",
 
@@ -37,7 +37,9 @@
             "services/google.js",
             "services/plex.js",
             "services/reddit.js",
-            "services/spotify.js"
+            "services/spotify.js",
+            "services/discord.js",
+            "services/openai.js"
         ]
     },
 
