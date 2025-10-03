@@ -110,8 +110,6 @@ async function setupOPENAIContainer () {
 }
 
 async function containOPENAI (options) {
-  // Listen to requests and open OPENAI into its Container,
-  // open other sites into the default tab context
   const requestUrl = new URL(options.url);
 
   let isOPENAI = false;
@@ -122,54 +120,42 @@ async function containOPENAI (options) {
     }
   }
 
-  // We have to check with every request if the requested URL is assigned with MAC
-  // because the user can assign URLs at any given time (needs MAC Events)
+  // If MAC has an assignment for this URL, let MAC handle it
   if (OPENAIMacAddonEnabled) {
     const macAssigned = await Globals.getMACAssignment(options.url);
-    if (macAssigned) {
-      // This URL is assigned with MAC, so we don't handle this request
-      return;
-    }
+    if (macAssigned) return;
   }
 
   const tab = await browser.tabs.get(options.tabId);
   const tabCookieStoreId = tab.cookieStoreId;
+
   if (isOPENAI) {
-    if (tabCookieStoreId !== OPENAICookieStoreId && !tab.incognito) {
-      // See https://github.com/mozilla/contain-OPENAI/issues/23
-      // Sometimes this add-on is installed but doesn't get a OPENAICookieStoreId ?
-      if (OPENAICookieStoreId) {
-        if (Globals.shouldCancelEarly(tab, options)) {
-          return {cancel: true};
-        }
-        browser.tabs.create({
-          url: requestUrl.toString(),
-          cookieStoreId: OPENAICookieStoreId,
-          active: tab.active,
-          index: tab.index,
-          windowId: tab.windowId
-        });
-        browser.tabs.remove(options.tabId);
-        return {cancel: true};
-      }
-    }
-  } else {
-    if (tabCookieStoreId === OPENAICookieStoreId) {
-      if (Globals.shouldCancelEarly(tab, options)) {
-        return {cancel: true};
-      }
+    // Enforce: OpenAI → must live in the OpenAI container
+    if (tabCookieStoreId !== OPENAICookieStoreId && !tab.incognito && OPENAICookieStoreId) {
+      if (Globals.shouldCancelEarly(tab, options)) return { cancel: true };
+
       browser.tabs.create({
         url: requestUrl.toString(),
+        cookieStoreId: OPENAICookieStoreId,
         active: tab.active,
         index: tab.index,
         windowId: tab.windowId
       });
       browser.tabs.remove(options.tabId);
-      return {cancel: true};
+      return { cancel: true };
     }
+    // already in the right container → allow
+    return;
   }
+
+  // Not an OpenAI domain:
+  // Old code forcibly moved these out of the OpenAI container.
+  // We *don’t* do that anymore so that auth redirects (Google/Apple/etc.)
+  // work seamlessly. Just allow the request.
+  return;
 }
 
+// --- keep your init() mostly the same ---
 (async function init() {
   await OPENAISetupMACAddonManagementListeners();
   OPENAIMacAddonEnabled = await isOPENAIMACAddonEnabled();
@@ -178,25 +164,14 @@ async function containOPENAI (options) {
   clearOPENAICookies();
   generateOPENAIHostREs();
 
+  const currentSettings = await browser.storage.sync.get();
+  if (currentSettings.disable_OPENAI) return;
 
-  // Do nothing if the user has disabled the container
-  let currentSettings = await browser.storage.sync.get();
-  if (currentSettings.disable_OPENAI) {
-    return
-  } else {
-    // Add the request listener
-    browser.webRequest.onBeforeRequest.addListener(containOPENAI, {urls: ["<all_urls>"], types: ["main_frame"]}, ["blocking"]);
+  browser.webRequest.onBeforeRequest.addListener(
+    containOPENAI,
+    { urls: ["<all_urls>"], types: ["main_frame"] },
+    ["blocking"]
+  );
 
-    // Clean up canceled requests
-    browser.webRequest.onCompleted.addListener((options) => {
-      if (canceledRequests[options.tabId]) {
-       delete canceledRequests[options.tabId];
-      }
-    },{urls: ["<all_urls>"], types: ["main_frame"]});
-    browser.webRequest.onErrorOccurred.addListener((options) => {
-      if (canceledRequests[options.tabId]) {
-        delete canceledRequests[options.tabId];
-      }
-    },{urls: ["<all_urls>"], types: ["main_frame"]});
-  }
+  // (Optional) Your cleanup listeners can remain as-is
 })();

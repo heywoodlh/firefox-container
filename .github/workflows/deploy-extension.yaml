@@ -1,6 +1,9 @@
 name: build and deploy firefox extension to addons.mozilla.org
 
 on:
+  push:
+    paths:
+      - manifest.json
   workflow_dispatch:
 
 jobs:
