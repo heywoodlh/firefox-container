@@ -19,7 +19,7 @@ Build the extension with:
 nix run .#package
 ```
 
-Then add the local extension file in <about:config> > Gear Icon > Debug Add-ons > Load Temporary Add-on
+Then add the local extension file in <about:addons> > Gear Icon > Debug Add-ons > Load Temporary Add-on
 
 ## Background
 
